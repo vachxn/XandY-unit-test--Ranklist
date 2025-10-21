@@ -47,7 +47,10 @@ def detect_score_column(df: pd.DataFrame) -> str:
 def process_raw_ranklist(file_path: str) -> pd.DataFrame:
     """Performs data cleaning, concatenation, extraction, and sorting by performance."""
     try:
-        df = pd.read_csv(file_path)
+        # Read CSV with error handling for malformed lines
+        # on_bad_lines='skip' will skip problematic lines instead of crashing
+        # warn will notify us which lines were skipped
+        df = pd.read_csv(file_path, on_bad_lines='warn', engine='python')
     except FileNotFoundError:
         raise FileNotFoundError(f"Error: Raw ranklist file not found at {file_path}")
 

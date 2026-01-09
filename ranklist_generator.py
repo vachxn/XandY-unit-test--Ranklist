@@ -63,7 +63,23 @@ def process_raw_ranklist(file_path: str) -> pd.DataFrame:
     def extract_batch_id(batch_str):
         if pd.isna(batch_str):
             return np.nan
-        match = re.match(r'([A-Za-z0-9]+)', str(batch_str).strip())
+        batch_str = str(batch_str).strip()
+        
+        # Handle comma-separated values by looking for patterns like '7C3', '7G2', etc.
+        # Split by comma and look for batch ID patterns in each part
+        import re
+        parts = [part.strip() for part in batch_str.split(',')]
+        
+        for part in parts:
+            # Look for the most common batch format (e.g., 7C3, 7C4, etc.)
+            # Pattern: digits followed by letters followed by digits (e.g., 7C3, 7G2, etc.)
+            batch_pattern = r'[0-9]+[A-Za-z]+[0-9]+'
+            batch_match = re.search(batch_pattern, part)
+            if batch_match:
+                return batch_match.group()
+        
+        # If no pattern matches, try to extract the first alphanumeric sequence
+        match = re.match(r'([A-Za-z0-9]+)', batch_str)
         return match.group(1) if match else np.nan
 
     df['Batch ID'] = df['Batch'].apply(extract_batch_id)
@@ -623,6 +639,19 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
 
     print(f"\n✅ Success! New filtered data has been processed.")
     print(f"Number of new records added: {len(final_data_to_add)}")
+    
+    # Check if the target student is in the final data
+    if 'Username' in final_data_to_add.columns:
+        target_students = final_data_to_add[
+            (final_data_to_add['Username'] == 'F25070871') | 
+            (final_data_to_add['Full Name'].str.contains('zayan Muhammed', case=False, na=False))
+        ]
+        if len(target_students) > 0:
+            print(f"✅ Target student 'F25070871 zayan Muhammed' is included in the final output.")
+        else:
+            print(f"❌ Target student 'F25070871 zayan Muhammed' is NOT in the final output.")
+            print(f"   Available usernames in final data: {final_data_to_add['Username'].head(5).tolist() if 'Username' in final_data_to_add.columns else 'Username column not found'}")
+            print(f"   Available names in final data: {final_data_to_add['Full Name'].head(5).tolist() if 'Full Name' in final_data_to_add.columns else 'Full Name column not found'}")
 
 
 def main():
@@ -644,16 +673,33 @@ def main():
             # Search workspace for candidate files
             candidates = glob.glob(DEFAULT_RAW_GLOB)
             candidates += glob.glob(os.path.join(os.getcwd(), DEFAULT_RAW_GLOB))
-            # Deduplicate candidates while preserving order
-            candidates = list(dict.fromkeys(candidates))
+            
+            # Deduplicate by normalizing paths to absolute paths
+            unique_candidates = {}
+            for f in candidates:
+                abs_path = os.path.abspath(f)
+                if abs_path not in unique_candidates:
+                    unique_candidates[abs_path] = f
+            candidates = list(unique_candidates.keys())
+            
+            # Sort by modification time (newest first) and keep only last 5
+            if candidates:
+                candidates_with_time = [(f, os.path.getmtime(f)) for f in candidates]
+                candidates_with_time.sort(key=lambda x: x[1], reverse=True)  # Sort by time, newest first
+                candidates = [f for f, _ in candidates_with_time[:5]]  # Keep only last 5 newest files
+            
             if len(candidates) == 1:
                 raw_file_to_use = candidates[0]
             elif len(candidates) > 1:
-                # Interactive selection
-                print("\nMultiple candidate raw files found:")
+                # Interactive selection - showing only last 5 newest files
+                print("\n📄 Last 5 recently added files:")
                 for i, c in enumerate(candidates, start=1):
-                    print(f"{i}. {c}")
-                choice = input("Enter the number of the file to use (or press Enter to cancel): ").strip()
+                    # Get file modification time for display
+                    mod_time = os.path.getmtime(c)
+                    from datetime import datetime
+                    time_str = datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
+                    print(f"{i}. {os.path.basename(c)} (Modified: {time_str})")
+                choice = input("\nEnter the number of the file to use (or press Enter to cancel): ").strip()
                 if choice.isdigit() and 1 <= int(choice) <= len(candidates):
                     raw_file_to_use = candidates[int(choice) - 1]
             else:
@@ -666,6 +712,17 @@ def main():
 
         print(f"1. Processing raw ranklist from: {raw_file_to_use}")
         processed_df = process_raw_ranklist(raw_file_to_use)
+        
+        # Check if target student exists in the original processed data
+        target_student = processed_df[(processed_df['Username'] == 'F25070871') | 
+                                    (processed_df['Full Name'].str.contains('zayan Muhammed', case=False, na=False))]
+        if len(target_student) > 0:
+            print(f"✅ Target student 'F25070871 zayan Muhammed' found in raw data ({len(target_student)} record(s)).")
+        else:
+            print(f"❌ Target student 'F25070871 zayan Muhammed' NOT found in raw data.")
+            print(f"   Total records in raw data: {len(processed_df)}")
+            print(f"   Available usernames in raw data: {processed_df['Username'].head(10).tolist()}")
+            print(f"   Available names in raw data: {processed_df['Full Name'].head(10).tolist()}")
 
         # Detect the score column dynamically
         score_column = detect_score_column(processed_df)
@@ -688,12 +745,36 @@ def main():
         batches_to_keep = get_batches_to_filter(processed_df)
 
         if batches_to_keep:
+            # Before filtering, check if any important records might be lost
+            original_count = len(processed_df)
             processed_df = processed_df[processed_df['Batch ID'].isin(batches_to_keep)].copy()
-            print(f"Filtering complete. {len(processed_df)} records remaining.")
+            filtered_count = len(processed_df)
+            print(f"Filtering complete. {filtered_count} records remaining (from {original_count}).")
+            
+            # Check if the specific student is in the filtered data
+            target_student = processed_df[(processed_df['Username'] == 'F25070871') | 
+                                        (processed_df['Full Name'].str.contains('zayan Muhammed', case=False, na=False))]
+            if len(target_student) == 0:
+                print("⚠️  Warning: The student 'F25070871 zayan Muhammed' was filtered out by batch filtering.")
+                print("   Available batches in data:", processed_df['Batch ID'].unique())
+                print("   Batches that were selected for filtering:", batches_to_keep)
         else:
             print("Filtering skipped. All records will be considered for the template.")
+            
+            # Check if the specific student exists in the data
+            target_student = processed_df[(processed_df['Username'] == 'F25070871') | 
+                                        (processed_df['Full Name'].str.contains('zayan Muhammed', case=False, na=False))]
+            if len(target_student) > 0:
+                print(f"✅ Found student 'F25070871 zayan Muhammed' in the dataset ({len(target_student)} record(s)).")
+            else:
+                print("⚠️  Warning: Could not find student 'F25070871 zayan Muhammed' in the dataset.")
+                print("   Available usernames in data:", processed_df['Username'].head(10).tolist())
+                print("   Available names in data:", processed_df['Full Name'].head(10).tolist())
 
-        # STEP 6: Integrate into the Permanent Template (without modifying the original)
+        # STEP 6: Use the current directory as output directory
+        output_dir = os.getcwd()
+        
+        # STEP 7: Integrate into the Permanent Template (without modifying the original)
         template_to_use = args.template if args.template else PERMANENT_TEMPLATE_FILE
         print(f"\n6. Integrating data into template (original left unchanged). Template source: {template_to_use}")
         integrate_to_template(
@@ -703,7 +784,7 @@ def main():
             skip_rows=TEMPLATE_SKIP_ROWS,
             custom_title=custom_title,
             out_base_name=output_filename,
-            out_dir=args.out_dir,
+            out_dir=output_dir,
             make_pdf=(not args.no_pdf)
         )
 

@@ -66,7 +66,7 @@ def process_file():
         rows_before = len(processed_df)
         available_ids = [str(b).strip() for b in processed_df['Batch ID'].fillna('').unique() if str(b).strip()]
         
-        with open(os.path.join(PROJECT_DIR, 'debug_filter.log'), 'w') as f_log:
+        with open(os.path.join(BASE_DIR, 'debug_filter.log'), 'w') as f_log:
             f_log.write(f"Timestamp: {os.path.abspath(upload_path)}\n")
             f_log.write(f"Total rows before filter: {rows_before}\n")
             f_log.write(f"Received batches_str: '{batches_str}'\n")

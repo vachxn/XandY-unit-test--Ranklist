@@ -199,7 +199,7 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
     try:
         # Load template workbook and sheet
         template_wb = openpyxl.load_workbook(template_path)
-        template_ws = template_wb.active
+        out_ws = template_wb.active
         
         # Determine output directory and base name
         out_dir = out_dir or os.getcwd()
@@ -207,52 +207,26 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
             os.makedirs(out_dir, exist_ok=True)
 
         template_basename = os.path.splitext(os.path.basename(template_path))[0]
-        if out_base_name:
-            base = out_base_name
-        else:
-            base = f"{template_basename}_copy"
+        base = out_base_name or f"{template_basename}_copy"
 
         out_xlsx_path = os.path.join(out_dir, f"{base}.xlsx")
         out_csv_path = os.path.join(out_dir, f"{base}.csv")
         out_pdf_path = os.path.join(out_dir, f"{base}.pdf")
 
-        # Create new workbook and sheet
-        out_wb = openpyxl.Workbook()
-        out_ws = out_wb.active
-        
-        # Copy header rows (rows 1-2) with formatting from template
-        for i in range(1, skip_rows + 1):
-            for j in range(1, 16):  # 15 columns (A-O)
-                src_cell = template_ws.cell(row=i, column=j)
-                dst_cell = out_ws.cell(row=i, column=j)
-                dst_cell.value = src_cell.value
-                if src_cell.has_style:
-                    dst_cell.font = src_cell.font.copy()
-                    dst_cell.fill = src_cell.fill.copy()
-                    dst_cell.alignment = src_cell.alignment.copy() if src_cell.alignment else None
-                    dst_cell.border = src_cell.border.copy() if src_cell.border else None
-                    dst_cell.number_format = src_cell.number_format
-        
-        # Merge cells B1:E1 for custom title
-        out_ws.merge_cells('B1:E1')
-        
-        # Add custom title if provided
+        # 1. Clear existing data rows in the template from row skip_rows+1 onwards
+        # This prevents leftover data when the new filtered DataFrame is shorter than the template's previous data
+        max_row = out_ws.max_row
+        if max_row > skip_rows:
+            # Delete rows starting from skip_rows+1 up to max_row
+            out_ws.delete_rows(skip_rows + 1, max_row - skip_rows)
+
+        # 2. Add custom title if provided
         if custom_title:
+            out_ws.merge_cells('B1:E1')
             title_cell = out_ws.cell(row=1, column=2)  # B1
             title_cell.value = custom_title
-            # Copy styling from template's B1 cell
-            template_b1 = template_ws.cell(row=1, column=2)
-            if template_b1.has_style:
-                title_cell.font = template_b1.font.copy()
-                title_cell.fill = template_b1.fill.copy()
-                title_cell.alignment = template_b1.alignment.copy() if template_b1.alignment else None
         
-        # Get the last formula row from template to use as reference
-        # Template row 3 has initial values, row 4+ have formulas
-        template_competitive_formula = template_ws.cell(row=5, column=2).value  # B5
-        template_normal_formula = template_ws.cell(row=5, column=3).value  # C5
-        
-        # Add data rows starting from row 3 (skip_rows + 1)
+        # 3. Add data rows starting from row 3 (skip_rows + 1)
         start_row = skip_rows + 1
         for row_num, (idx, data_row) in enumerate(final_data_to_add.iterrows()):
             excel_row = start_row + row_num
@@ -262,30 +236,24 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
             
             # Column B: Competitive Rank formula
             if row_num == 0:
-                # First data row gets simple value 1
                 out_ws.cell(row=excel_row, column=2, value=1)
             else:
-                # Subsequent rows get formula: =IF(AND(C{prev}=C{curr},G{prev}=G{curr}),B{prev},A{curr})
                 formula = f"=IF(AND(C{excel_row-1}=C{excel_row},G{excel_row-1}=G{excel_row}),B{excel_row-1},A{excel_row})"
                 out_ws.cell(row=excel_row, column=2, value=formula)
             
             # Column C: Normal Rank formula
             if row_num == 0:
-                # First data row gets simple value 1
                 out_ws.cell(row=excel_row, column=3, value=1)
             else:
-                # Subsequent rows get formula: =IF(J{curr}=J{prev},C{prev},C{prev}+1)
                 formula = f"=IF(J{excel_row}=J{excel_row-1},C{excel_row-1},C{excel_row-1}+1)"
                 out_ws.cell(row=excel_row, column=3, value=formula)
             
             # Columns D-K: Data from processed dataframe
             for col_idx, (header, value) in enumerate(zip(template_headings, data_row), start=4):
                 cell = out_ws.cell(row=excel_row, column=col_idx)
-                # Preserve numeric types
                 if pd.notna(value):
-                    # Special handling for Percentage column (column K, index 11)
                     if header == 'Percentage (%)' and isinstance(value, (int, float, np.integer, np.floating)):
-                        cell.value = f"{value}%"  # Add % symbol
+                        cell.value = f"{value}%"
                     elif isinstance(value, (int, float, np.integer, np.floating)):
                         cell.value = float(value) if isinstance(value, (float, np.floating)) else int(value)
                     else:
@@ -297,8 +265,9 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
             for col_idx in range(12, 16):
                 out_ws.cell(row=excel_row, column=col_idx, value=None)
         
-        # Save XLSX with formulas
-        out_wb.save(out_xlsx_path)
+        # Save XLSX
+        template_wb.save(out_xlsx_path)
+        template_wb.close()
         print(f"✅ XLSX saved at: {out_xlsx_path}")
         
         # We'll generate CSV and PDF together using calculated rank values

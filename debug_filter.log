@@ -1,0 +1,7 @@
+Timestamp: C:\Users\Vachan\OneDrive\Desktop\Ranklist Automation\uploads\non_metals_-_scores_report-march-14-2026-1030-am.csv
+Total rows before filter: 162
+Received batches_str: '10G1, 10G2, 10G3'
+Available IDs in data: ['10C1', '10C2', '10C3', '10C4', '10C5', '10C6', '10C7', '10G1', '10G2', '10G3']
+Requested parsing: ['10G1', '10G2', '10G3']
+Valid IDs matched: ['10G1', '10G2', '10G3']
+Rows after filter: 52

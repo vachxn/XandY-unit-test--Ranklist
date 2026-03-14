@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ranklist Automation Pro</title>
+    <link rel="icon" href="data:,">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container glass-panel">
+        <header class="header">
+            <div class="logo-container">
+                <i class="fa-solid fa-ranking-star logo-icon"></i>
+            </div>
+            <h1>Ranklist Automation</h1>
+            <p class="subtitle">Transform raw scores into professional, beautifully formatted ranklists instantly.</p>
+        </header>
+
+        <form id="uploadForm" action="/process" method="POST" enctype="multipart/form-data">
+
+            <!-- Upload Zone -->
+            <div class="form-section">
+                <label for="raw_file" class="upload-zone" id="uploadZone">
+                    <input type="file" name="raw_file" id="raw_file" accept=".csv" required class="visually-hidden">
+                    <div class="upload-content" id="uploadContent">
+                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                        <h3>Drag &amp; Drop your raw scores CSV here</h3>
+                        <p>or click to browse files</p>
+                    </div>
+                    <div class="selected-file" id="selectedFile" style="display:none;">
+                        <i class="fa-solid fa-file-csv"></i>
+                        <span id="fileName">No file selected</span>
+                        <button type="button" class="remove-btn" id="removeFileBtn">
+                            <i class="fa-solid fa-times"></i>
+                        </button>
+                    </div>
+                </label>
+            </div>
+
+            <!-- Config -->
+            <div class="form-section config-section">
+                <h3 class="section-title"><i class="fa-solid fa-sliders"></i> Configuration</h3>
+
+                <div class="input-group">
+                    <label for="custom_title">Ranklist Title (Optional)</label>
+                    <input type="text" id="custom_title" name="custom_title" placeholder="e.g., Term 1 Final Physics Ranklist">
+                </div>
+
+                <div class="input-group">
+                    <label for="custom_filename">Output File Name (Optional)</label>
+                    <input type="text" id="custom_filename" name="custom_filename" placeholder="e.g., Class_12_Results_Final">
+                </div>
+
+                <!-- Batch Selector -->
+                <div class="input-group" id="batchGroup">
+                    <label>Batches to Include</label>
+                    <div class="batch-hint" id="batchHint">
+                        <i class="fa-solid fa-circle-info"></i> Upload a CSV first to see available batches
+                    </div>
+                    <div class="batch-chips" id="batchChips" style="display:none;"></div>
+                    <!-- Hidden input carries the selected batches to the server -->
+                    <input type="hidden" name="batches" id="batches">
+                    <div class="batch-actions" id="batchActions" style="display:none;">
+                        <button type="button" class="batch-action-btn" id="selectAllBtn">Select All</button>
+                        <button type="button" class="batch-action-btn" id="clearAllBtn">Clear All</button>
+                        <span class="batch-count" id="batchCount"></span>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">
+                <span class="btn-text">Generate Reports</span>
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <div class="btn-glow"></div>
+            </button>
+        </form>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay" style="display:none; opacity:0;">
+            <div class="loader">
+                <svg viewBox="25 25 50 50">
+                    <circle r="20" cy="50" cx="50"></circle>
+                </svg>
+            </div>
+            <h3 class="loading-text">Processing data...</h3>
+            <p class="loading-sub">Generating Excel, PDF, and CSV files</p>
+        </div>
+
+        <!-- Success Message -->
+        <div class="success-message" id="successMessage" style="display:none;">
+            <div class="success-icon-container">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <h3>Generation Complete!</h3>
+            <p id="successSubtitle">Files saved to your Ranklist Automation folder.</p>
+            <button type="button" class="download-all-btn" id="downloadAllBtn">
+                <i class="fa-solid fa-download"></i> Download All Files
+            </button>
+            <button type="button" class="reset-btn" id="resetBtn">Process Another File</button>
+        </div>
+
+        <!-- Error Toast -->
+        <div class="error-message" id="errorMessage" style="display:none; opacity:0;">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span id="errorText">An error occurred. Please try again.</span>
+        </div>
+    </div>
+
+    <script>
+        const uploadZone     = document.getElementById('uploadZone');
+        const fileInput      = document.getElementById('raw_file');
+        const uploadContent  = document.getElementById('uploadContent');
+        const selectedFile   = document.getElementById('selectedFile');
+        const fileName       = document.getElementById('fileName');
+        const removeFileBtn  = document.getElementById('removeFileBtn');
+        const form           = document.getElementById('uploadForm');
+        const submitBtn      = document.getElementById('submitBtn');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const successMessage = document.getElementById('successMessage');
+        const errorMessage   = document.getElementById('errorMessage');
+        const errorText      = document.getElementById('errorText');
+        const resetBtn       = document.getElementById('resetBtn');
+        const batchHint      = document.getElementById('batchHint');
+        const batchChips     = document.getElementById('batchChips');
+        const batchActions   = document.getElementById('batchActions');
+        const batchHiddenInput = document.getElementById('batches');
+        const batchCount     = document.getElementById('batchCount');
+
+        let selectedBatches = new Set();
+
+        // ── Drag visual feedback ──────────────────────────────────────────────
+        uploadZone.addEventListener('dragenter', e => { e.preventDefault(); uploadZone.classList.add('highlight'); });
+        uploadZone.addEventListener('dragover',  e => { e.preventDefault(); uploadZone.classList.add('highlight'); });
+        uploadZone.addEventListener('dragleave', () => { uploadZone.classList.remove('highlight'); });
+
+        uploadZone.addEventListener('drop', e => {
+            e.preventDefault();
+            uploadZone.classList.remove('highlight');
+            const files = e.dataTransfer.files;
+            if (files.length) {
+                fileInput.files = files;
+                handleFileChange();
+            }
+        });
+
+        // ── Remove button ─────────────────────────────────────────────────────
+        removeFileBtn.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            fileInput.value = '';
+            resetUploadZone();
+            resetBatchSelector();
+        });
+
+        // ── File chosen via dialog ────────────────────────────────────────────
+        fileInput.addEventListener('change', handleFileChange);
+
+        function handleFileChange() {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                if (!file.name.toLowerCase().endsWith('.csv')) {
+                    showError('Please upload a CSV file only.');
+                    fileInput.value = '';
+                    return;
+                }
+                fileName.textContent = file.name;
+                uploadContent.style.display = 'none';
+                selectedFile.style.display  = 'flex';
+                uploadZone.classList.add('file-active');
+                // Parse CSV to extract batches
+                parseBatchesFromFile(file);
+            } else {
+                resetUploadZone();
+                resetBatchSelector();
+            }
+        }
+
+        function resetUploadZone() {
+            uploadContent.style.display = 'flex';
+            selectedFile.style.display  = 'none';
+            uploadZone.classList.remove('file-active');
+        }
+
+        // ── CSV Batch Parsing (client-side) ───────────────────────────────────
+        function parseBatchesFromFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n');
+                if (lines.length < 2) return;
+
+                // Find the "Batch" column index from the header row
+                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+                const batchColIndex = headers.findIndex(h => h.toLowerCase() === 'batch');
+                if (batchColIndex === -1) {
+                    showBatchHint('<i class="fa-solid fa-triangle-exclamation"></i> No "Batch" column found in CSV');
+                    return;
+                }
+
+                // Extract unique batch IDs using the same regex as ranklist_generator.py
+                const batchSet = new Set();
+                const batchRegex = /[0-9]+[A-Za-z]+[0-9]+/;
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseCsvLine(lines[i]);
+                    if (cols.length <= batchColIndex) continue;
+                    const batchVal = cols[batchColIndex].trim().replace(/^"|"$/g, '');
+                    if (!batchVal) continue;
+                    
+                    // Try to extract batch ID pattern
+                    const parts = batchVal.split(',');
+                    let foundMatch = false;
+                    for (const part of parts) {
+                        const match = part.trim().match(batchRegex);
+                        if (match) { 
+                            batchSet.add(match[0]); 
+                            foundMatch = true; 
+                            break; 
+                        }
+                    }
+                    // Fallback: first alphanumeric sequence (per row)
+                    if (!foundMatch && batchVal) {
+                        const m = batchVal.match(/([A-Za-z0-9]+)/);
+                        if (m) batchSet.add(m[1]);
+                    }
+                }
+
+                const batches = Array.from(batchSet).sort(
+                    (a, b) => a.toLowerCase().localeCompare(b.toLowerCase())
+                );
+                if (batches.length === 0) {
+                    showBatchHint('<i class="fa-solid fa-triangle-exclamation"></i> No valid batch identifiers found');
+                    return;
+                }
+                renderBatchChips(batches);
+            };
+            reader.readAsText(file);
+        }
+
+        function parseCsvLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') { inQuotes = !inQuotes; }
+                else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+                else { current += ch; }
+            }
+            result.push(current);
+            return result;
+        }
+
+        function showBatchHint(html) {
+            batchHint.innerHTML = html;
+            batchHint.style.display = 'flex';
+            batchChips.style.display = 'none';
+            batchActions.style.display = 'none';
+        }
+
+        function renderBatchChips(batches) {
+            batchHint.style.display = 'none';
+            batchChips.innerHTML = '';
+            selectedBatches = new Set(); // Start with NONE selected by default (Include mode)
+
+            batches.forEach(batch => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'batch-chip'; // Not selected by default
+                chip.textContent = batch;
+                chip.dataset.batch = batch;
+                chip.addEventListener('click', () => toggleChip(chip, batch));
+                batchChips.appendChild(chip);
+            });
+
+            batchChips.style.display  = 'flex';
+            batchActions.style.display = 'flex';
+            updateBatchInput();
+        }
+
+        function toggleChip(chip, batch) {
+            if (selectedBatches.has(batch)) {
+                selectedBatches.delete(batch);
+                chip.classList.remove('selected');
+            } else {
+                selectedBatches.add(batch);
+                chip.classList.add('selected');
+            }
+            updateBatchInput();
+        }
+
+        function updateBatchInput() {
+            const selectedArray = Array.from(selectedBatches);
+            batchHiddenInput.value = selectedArray.join(', ');
+            const total = batchChips.querySelectorAll('.batch-chip').length;
+            batchCount.textContent = `${selectedBatches.size} / ${total} selected`;
+            console.log('Current batch selection:', batchHiddenInput.value);
+        }
+
+        document.getElementById('selectAllBtn').addEventListener('click', () => {
+            batchChips.querySelectorAll('.batch-chip').forEach(chip => {
+                chip.classList.add('selected');
+                selectedBatches.add(chip.dataset.batch);
+            });
+            updateBatchInput();
+        });
+
+        document.getElementById('clearAllBtn').addEventListener('click', () => {
+            batchChips.querySelectorAll('.batch-chip').forEach(chip => {
+                chip.classList.remove('selected');
+            });
+            selectedBatches.clear();
+            updateBatchInput();
+        });
+
+        function resetBatchSelector() {
+            selectedBatches.clear();
+            batchChips.innerHTML = '';
+            batchChips.style.display   = 'none';
+            batchActions.style.display = 'none';
+            batchHint.innerHTML = '<i class="fa-solid fa-circle-info"></i> Upload a CSV first to see available batches';
+            batchHint.style.display = 'flex';
+            batchHiddenInput.value = '';
+        }
+
+        // ── Error toast ───────────────────────────────────────────────────────
+        function showError(msg) {
+            errorText.textContent = msg;
+            errorMessage.style.display = 'flex';
+            requestAnimationFrame(() => { errorMessage.style.opacity = '1'; });
+            setTimeout(() => {
+                errorMessage.style.opacity = '0';
+                setTimeout(() => { errorMessage.style.display = 'none'; }, 300);
+            }, 5000);
+        }
+
+        let generatedFiles = [];
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
+
+        // ── Form submit ───────────────────────────────────────────────────────
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            if (!fileInput.files.length) {
+                showError('Please select a raw scores CSV file first.');
+                return;
+            }
+
+            loadingOverlay.style.display = 'flex';
+            requestAnimationFrame(() => { loadingOverlay.style.opacity = '1'; });
+            submitBtn.disabled = true;
+
+            console.log('Sending batches:', batchHiddenInput.value);
+
+            try {
+                const response = await fetch('/process', { method: 'POST', body: new FormData(form) });
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    generatedFiles = data.files;
+                    form.style.display           = 'none';
+                    successMessage.style.display = 'flex';
+                } else {
+                    let errMsg = data.error || 'Processing failed. Check the server logs.';
+                    if (data.traceback) {
+                        errMsg += '<br><br><pre style="text-align:left; font-size:11px; max-height:150px; overflow-y:auto; background:rgba(0,0,0,0.5); padding:10px; border-radius:6px; margin-top:10px;">' + data.traceback + '</pre>';
+                    }
+                    showError(errMsg);
+                }
+            } catch (err) {
+                showError('Network error. Make sure the server is running.');
+            } finally {
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300);
+                submitBtn.disabled = false;
+            }
+        });
+
+        // ── Download All — trigger each file with a small delay ───────────────
+        downloadAllBtn.addEventListener('click', () => {
+            generatedFiles.forEach((f, i) => {
+                setTimeout(() => {
+                    const a = document.createElement('a');
+                    a.href = `/download/${encodeURIComponent(f.name)}`;
+                    a.download = f.name;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                }, i * 600);   // 600ms gap so browser accepts each download
+            });
+        });
+
+        // ── Reset ─────────────────────────────────────────────────────────────
+        resetBtn.addEventListener('click', () => {
+            fileInput.value = '';
+            document.getElementById('custom_title').value    = '';
+            document.getElementById('custom_filename').value = '';
+            resetUploadZone();
+            resetBatchSelector();
+            successMessage.style.display = 'none';
+            form.style.display           = 'block';
+        });
+    </script>
+</body>
+</html>

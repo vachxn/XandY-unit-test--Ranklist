@@ -28,7 +28,7 @@ TEMPLATE_SKIP_ROWS = 2 # Skip the header rows (Title and Column Names) in your t
 DEFAULT_RAW_GLOB = "*scores_report*.csv"
 RAW_DATA_FILE: Optional[str] = None
 # PERMANENT TEMPLATE FILE - This is your master template that will be used automatically
-PERMANENT_TEMPLATE_FILE = r"C:\Users\Vachan\OneDrive\Desktop\Ranklist Automation\manager_template (5).xlsx"
+PERMANENT_TEMPLATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manager_template (5).xlsx")
 
 
 # --- DATA PROCESSING FUNCTIONS (Same as before, but combined) ---
@@ -186,15 +186,12 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
 
     # 2. Read the existing template to understand structure
     try:
+        # Load template workbook and sheet
         import openpyxl
         from openpyxl.utils.dataframe import dataframe_to_rows
         from openpyxl.styles import Font, PatternFill
     except ImportError:
-        import sys, subprocess
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'openpyxl'])
-        import openpyxl
-        from openpyxl.utils.dataframe import dataframe_to_rows
-        from openpyxl.styles import Font, PatternFill
+        raise ImportError("The 'openpyxl' library is required. Please install it with 'pip install openpyxl'.")
     
     try:
         # Load template workbook and sheet
@@ -377,21 +374,11 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
                 
                 # A4 dimensions in points: 595.28 x 841.89
                 # Using point-based measurements for precise control
-            except Exception:
-                try:
-                    import sys, subprocess
-                    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'reportlab'])
-                    from reportlab.lib import colors
-                    from reportlab.lib.pagesizes import A4
-                    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-                    from reportlab.lib.units import inch
-                    from reportlab.pdfbase import pdfmetrics
-                    from reportlab.pdfbase.ttfonts import TTFont
-                except Exception as e:
-                    print(f"Could not create PDF (reportlab install failed): {e}")
-                    print(f"PDF was not created. Intended path: {out_pdf_path}")
-                    calc_wb.close()
-                    return
+            except ImportError:
+                print("Could not create PDF: The 'reportlab' library is required.")
+                print(f"PDF was not created. Intended path: {out_pdf_path}")
+                calc_wb.close()
+                return
 
             try:
                 # Register Calibri font (fallback to Helvetica if Calibri not available)

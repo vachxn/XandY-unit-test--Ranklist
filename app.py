@@ -14,10 +14,19 @@ from ranklist_generator import (
 
 app = Flask(__name__)
 
+# Determine if running on Vercel
+IS_VERCEL = "VERCEL" in os.environ
+
 # The project root — files are saved here directly
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(PROJECT_DIR, 'uploads')
+
+# On Vercel, use /tmp for writes. Locally, use the project dir.
+BASE_DIR = "/tmp" if IS_VERCEL else PROJECT_DIR
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+OUTPUT_DIR = os.path.join(BASE_DIR, 'output')
+
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
@@ -100,7 +109,7 @@ def process_file():
         mapping = FINAL_TEMPLATE_MAPPING_BASE.copy()
         mapping['Score (60)'] = score_column
 
-        # Save output directly to project folder
+        # Save output to our designated output directory
         integrate_to_template(
             processed_df=processed_df,
             template_path=PERMANENT_TEMPLATE_FILE,
@@ -108,21 +117,21 @@ def process_file():
             skip_rows=TEMPLATE_SKIP_ROWS,
             custom_title=custom_title,
             out_base_name=custom_filename,
-            out_dir=PROJECT_DIR,
+            out_dir=OUTPUT_DIR,
             make_pdf=True
         )
 
-        # Collect generated files
+        # Collect generated files from OUTPUT_DIR
         generated = []
         for ext in ['xlsx', 'csv', 'pdf']:
-            path = os.path.join(PROJECT_DIR, f"{custom_filename}.{ext}")
+            path = os.path.join(OUTPUT_DIR, f"{custom_filename}.{ext}")
             if os.path.exists(path):
                 generated.append({'name': f"{custom_filename}.{ext}", 'ext': ext})
 
         return jsonify({
             'success': True,
             'files': generated,
-            'output_dir': PROJECT_DIR,
+            'output_dir': OUTPUT_DIR,
             'debug': {
                 'received_batches': batches_str,
                 'valid_batches': valid,
@@ -149,7 +158,7 @@ def process_file():
 def download_file(filename):
     """Serve a generated file from the project directory for download."""
     safe_name = os.path.basename(filename)
-    file_path = os.path.join(PROJECT_DIR, safe_name)
+    file_path = os.path.join(OUTPUT_DIR, safe_name)
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
     return send_file(file_path, as_attachment=True, download_name=safe_name)

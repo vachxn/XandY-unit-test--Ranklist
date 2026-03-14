@@ -1,4 +1,5 @@
 import os
+import base64
 from flask import Flask, request, render_template, send_file, jsonify
 from werkzeug.utils import secure_filename
 
@@ -121,12 +122,18 @@ def process_file():
             make_pdf=True
         )
 
-        # Collect generated files from OUTPUT_DIR
+        # Collect generated files from OUTPUT_DIR and encode to Base64
         generated = []
         for ext in ['xlsx', 'csv', 'pdf']:
             path = os.path.join(OUTPUT_DIR, f"{custom_filename}.{ext}")
             if os.path.exists(path):
-                generated.append({'name': f"{custom_filename}.{ext}", 'ext': ext})
+                with open(path, "rb") as f:
+                    content_base64 = base64.b64encode(f.read()).decode('utf-8')
+                generated.append({
+                    'name': f"{custom_filename}.{ext}",
+                    'ext': ext,
+                    'content': content_base64
+                })
 
         return jsonify({
             'success': True,
@@ -153,15 +160,6 @@ def process_file():
             except:
                 pass
 
-
-@app.route('/download/<path:filename>')
-def download_file(filename):
-    """Serve a generated file from the project directory for download."""
-    safe_name = os.path.basename(filename)
-    file_path = os.path.join(OUTPUT_DIR, safe_name)
-    if not os.path.exists(file_path):
-        return jsonify({'error': 'File not found'}), 404
-    return send_file(file_path, as_attachment=True, download_name=safe_name)
 
 
 if __name__ == '__main__':

@@ -388,7 +388,14 @@
             generatedFiles.forEach((f, i) => {
                 setTimeout(() => {
                     const a = document.createElement('a');
-                    a.href = `/download/${encodeURIComponent(f.name)}`;
+                    const mimeTypes = {
+                        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        'csv': 'text/csv',
+                        'pdf': 'application/pdf'
+                    };
+                    const type = mimeTypes[f.ext] || 'application/octet-stream';
+                    
+                    a.href = `data:${type};base64,${f.content}`;
                     a.download = f.name;
                     document.body.appendChild(a);
                     a.click();

@@ -70,6 +70,17 @@ def process_raw_ranklist(file_path: str) -> pd.DataFrame:
         import re
         parts = [part.strip() for part in batch_str.split(',')]
         
+        # PRIORITY 1: Look for batches with 2026-27 first
+        for part in parts:
+            # Check if this part contains 2026-27
+            if '2026-27' in part:
+                # Extract batch pattern (e.g., 10C1, 10C6, etc.)
+                batch_pattern = r'([0-9]+[A-Za-z]+[0-9]+)\s*:\s*2026-27'
+                batch_match = re.search(batch_pattern, part)
+                if batch_match:
+                    return batch_match.group(1)
+        
+        # PRIORITY 2: If no 2026-27 found, look for any batch pattern
         for part in parts:
             # Look for the most common batch format (e.g., 7C3, 7C4, etc.)
             # Pattern: digits followed by letters followed by digits (e.g., 7C3, 7G2, etc.)

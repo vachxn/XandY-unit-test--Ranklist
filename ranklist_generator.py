@@ -59,7 +59,7 @@ def process_raw_ranklist(file_path: str) -> pd.DataFrame:
     df['Last Name'] = df['Last Name'].fillna('')
     df['Full Name'] = df['First Name'].astype(str) + ' ' + df['Last Name'].astype(str)
 
-    # 2. EXTRACT BATCH IDENTIFIER
+    # 2. EXTRACT BATCH IDENTIFIER (ONLY 2026-27 BATCHES)
     def extract_batch_id(batch_str):
         if pd.isna(batch_str):
             return np.nan
@@ -70,7 +70,7 @@ def process_raw_ranklist(file_path: str) -> pd.DataFrame:
         import re
         parts = [part.strip() for part in batch_str.split(',')]
         
-        # PRIORITY 1: Look for batches with 2026-27 first
+        # ONLY look for batches with 2026-27
         for part in parts:
             # Check if this part contains 2026-27
             if '2026-27' in part:
@@ -80,20 +80,17 @@ def process_raw_ranklist(file_path: str) -> pd.DataFrame:
                 if batch_match:
                     return batch_match.group(1)
         
-        # PRIORITY 2: If no 2026-27 found, look for any batch pattern
-        for part in parts:
-            # Look for the most common batch format (e.g., 7C3, 7C4, etc.)
-            # Pattern: digits followed by letters followed by digits (e.g., 7C3, 7G2, etc.)
-            batch_pattern = r'[0-9]+[A-Za-z]+[0-9]+'
-            batch_match = re.search(batch_pattern, part)
-            if batch_match:
-                return batch_match.group()
-        
-        # If no pattern matches, try to extract the first alphanumeric sequence
-        match = re.match(r'([A-Za-z0-9]+)', batch_str)
-        return match.group(1) if match else np.nan
+        # If no 2026-27 batch found, return NaN (student will be filtered out)
+        return np.nan
 
     df['Batch ID'] = df['Batch'].apply(extract_batch_id)
+
+    # Filter out students who don't have 2026-27 batches
+    students_without_2026_27 = df['Batch ID'].isna().sum()
+    if students_without_2026_27 > 0:
+        print(f"\n⚠️  Filtering out {students_without_2026_27} students without 2026-27 batches")
+        df = df[df['Batch ID'].notna()].copy()
+        print(f"✅ Remaining students with 2026-27 batches: {len(df)}")
 
     # 3. CONVERT TIME TAKEN TO SECONDS FOR SORTING
     def time_to_seconds(time_str):
@@ -606,6 +603,19 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
 
     print(f"\n✅ Success! New filtered data has been processed.")
     print(f"Number of new records added: {len(final_data_to_add)}")
+    
+    # VALIDATION: Check if all usernames from processed_df made it to final output
+    if 'Username' in processed_df.columns and 'Username' in final_data_to_add.columns:
+        original_usernames = set(processed_df['Username'].dropna().tolist())
+        final_usernames = set(final_data_to_add['Username'].dropna().tolist())
+        
+        missing_usernames = original_usernames - final_usernames
+        
+        if len(missing_usernames) > 0:
+            print(f"\n⚠️  WARNING: {len(missing_usernames)} students are missing from final output!")
+            print(f"   Missing usernames: {sorted(list(missing_usernames))[:10]}")  # Show first 10
+        else:
+            print(f"\n✅ VALIDATION PASSED: All {len(original_usernames)} students from processed data are in the final output!")
     
     # Check if the target student is in the final data
     if 'Username' in final_data_to_add.columns:

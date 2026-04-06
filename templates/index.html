@@ -208,28 +208,43 @@
 
                 // Extract unique batch IDs using the same regex as ranklist_generator.py
                 const batchSet = new Set();
-                const batchRegex = /[0-9]+[A-Za-z]+[0-9]+/;
+                // Updated regex to handle both formats:
+                // 1. Standard: 10C1, 10C6 (digits-letters-digits)
+                // 2. Special: 10WC (digits-letters without trailing digit)
+                const batchRegex = /[0-9]+[A-Za-z]+[0-9]*/;
+                
                 for (let i = 1; i < lines.length; i++) {
                     const cols = parseCsvLine(lines[i]);
                     if (cols.length <= batchColIndex) continue;
                     const batchVal = cols[batchColIndex].trim().replace(/^"|"$/g, '');
                     if (!batchVal) continue;
                     
-                    // Try to extract batch ID pattern
+                    // Try to extract batch ID pattern - prioritize 2026-27 batches
                     const parts = batchVal.split(',');
                     let foundMatch = false;
+                    
+                    // PRIORITY 1: Look for 2026-27 batches first
                     for (const part of parts) {
-                        const match = part.trim().match(batchRegex);
-                        if (match) { 
-                            batchSet.add(match[0]); 
-                            foundMatch = true; 
-                            break; 
+                        if (part.includes('2026-27')) {
+                            const match = part.trim().match(batchRegex);
+                            if (match) { 
+                                batchSet.add(match[0]); 
+                                foundMatch = true; 
+                                break; 
+                            }
                         }
                     }
-                    // Fallback: first alphanumeric sequence (per row)
-                    if (!foundMatch && batchVal) {
-                        const m = batchVal.match(/([A-Za-z0-9]+)/);
-                        if (m) batchSet.add(m[1]);
+                    
+                    // PRIORITY 2: If no 2026-27 found, use any batch pattern
+                    if (!foundMatch) {
+                        for (const part of parts) {
+                            const match = part.trim().match(batchRegex);
+                            if (match) { 
+                                batchSet.add(match[0]); 
+                                foundMatch = true; 
+                                break; 
+                            }
+                        }
                     }
                 }
 

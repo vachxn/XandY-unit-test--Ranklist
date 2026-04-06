@@ -65,7 +65,7 @@ def process_raw_ranklist(file_path: str) -> pd.DataFrame:
             return np.nan
         batch_str = str(batch_str).strip()
         
-        # Handle comma-separated values by looking for patterns like '7C3', '7G2', etc.
+        # Handle comma-separated values by looking for patterns like '7C3', '7G2', '10WC', etc.
         # Split by comma and look for batch ID patterns in each part
         import re
         parts = [part.strip() for part in batch_str.split(',')]
@@ -74,8 +74,10 @@ def process_raw_ranklist(file_path: str) -> pd.DataFrame:
         for part in parts:
             # Check if this part contains 2026-27
             if '2026-27' in part:
-                # Extract batch pattern (e.g., 10C1, 10C6, etc.)
-                batch_pattern = r'([0-9]+[A-Za-z]+[0-9]+)\s*:\s*2026-27'
+                # Extract batch pattern - handle both formats:
+                # 1. Standard: 10C1, 10C6 (digits-letters-digits)
+                # 2. Special: 10WC (digits-letters without trailing digit)
+                batch_pattern = r'([0-9]+[A-Za-z]+[0-9]*)\s*:\s*2026-27'
                 batch_match = re.search(batch_pattern, part)
                 if batch_match:
                     return batch_match.group(1)

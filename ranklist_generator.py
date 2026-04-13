@@ -65,18 +65,14 @@ def process_raw_ranklist(file_path: str) -> pd.DataFrame:
             return np.nan
         batch_str = str(batch_str).strip()
         
-        # Handle comma-separated values by looking for patterns like '7C3', '7G2', '10WC', etc.
-        # Split by comma and look for batch ID patterns in each part
+        # Handle comma-separated values
         import re
         parts = [part.strip() for part in batch_str.split(',')]
         
         # ONLY look for batches with 2026-27
         for part in parts:
-            # Check if this part contains 2026-27
             if '2026-27' in part:
-                # Extract batch pattern - handle both formats:
-                # 1. Standard: 10C1, 10C6 (digits-letters-digits)
-                # 2. Special: 10WC (digits-letters without trailing digit)
+                # Extract batch pattern - handle both 10C1 and 10WC formats
                 batch_pattern = r'([0-9]+[A-Za-z]+[0-9]*)\s*:\s*2026-27'
                 batch_match = re.search(batch_pattern, part)
                 if batch_match:
@@ -605,19 +601,6 @@ def integrate_to_template(processed_df: pd.DataFrame, template_path: str, mappin
 
     print(f"\n✅ Success! New filtered data has been processed.")
     print(f"Number of new records added: {len(final_data_to_add)}")
-    
-    # VALIDATION: Check if all usernames from processed_df made it to final output
-    if 'Username' in processed_df.columns and 'Username' in final_data_to_add.columns:
-        original_usernames = set(processed_df['Username'].dropna().tolist())
-        final_usernames = set(final_data_to_add['Username'].dropna().tolist())
-        
-        missing_usernames = original_usernames - final_usernames
-        
-        if len(missing_usernames) > 0:
-            print(f"\n⚠️  WARNING: {len(missing_usernames)} students are missing from final output!")
-            print(f"   Missing usernames: {sorted(list(missing_usernames))[:10]}")  # Show first 10
-        else:
-            print(f"\n✅ VALIDATION PASSED: All {len(original_usernames)} students from processed data are in the final output!")
     
     # Check if the target student is in the final data
     if 'Username' in final_data_to_add.columns:
